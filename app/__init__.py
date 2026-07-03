@@ -1,0 +1,1 @@
+"""IncidentPilot application package."""
