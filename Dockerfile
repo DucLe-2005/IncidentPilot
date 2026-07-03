@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.12-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -8,8 +8,6 @@ WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY app ./app
-COPY alembic.ini ./
-COPY migrations ./migrations
 
 RUN pip install .
 
@@ -18,3 +16,12 @@ USER appuser
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
+FROM runtime AS test
+
+USER root
+RUN pip install ".[dev]"
+USER appuser
+
+COPY --chown=appuser:appuser tests /tests
+
+CMD ["pytest", "-p", "no:cacheprovider", "/tests"]

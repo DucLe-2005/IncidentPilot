@@ -9,7 +9,6 @@ description = "AI-assisted incident triage and response service"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-  "alembic>=1.14,<2",
   "celery[redis]>=5.4,<6",
   "fastapi>=0.115,<1",
   "psycopg[binary]>=3.2,<4",
@@ -39,4 +38,3 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
-

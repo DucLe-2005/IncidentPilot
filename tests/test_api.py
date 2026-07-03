@@ -1,5 +1,3 @@
-from datetime import UTC, datetime
-
 from fastapi.testclient import TestClient
 
 
@@ -49,20 +47,54 @@ def test_resolve_incident(client: TestClient) -> None:
     assert response.json()["resolved_at"] is not None
 
 
-def test_create_and_filter_deployment(client: TestClient) -> None:
-    payload = {
-        "service_name": "checkout-api",
-        "environment": "production",
-        "version": "2026.07.02.1",
-        "commit_sha": "a1b2c3d4",
-        "deployed_by": "fake-ci",
-        "deployed_at": datetime.now(UTC).isoformat(),
-        "metadata": {"pipeline": "deploy-123"},
-    }
-    created = client.post("/api/v1/deployments", json=payload)
-    response = client.get("/api/v1/services/checkout-api/deployments")
+def test_configure_service_and_evidence_source(client: TestClient) -> None:
+    service_response = client.post(
+        "/api/v1/services",
+        json={
+            "name": "checkout-service",
+            "environment": "prod",
+            "owner_team": "commerce",
+            "slack_channel": "#checkout-incidents",
+            "repo_url": "https://github.com/example/checkout-service",
+            "runbook_url": "https://runbooks.example.com/checkout-service",
+            "tier": 1,
+        },
+    )
+    assert service_response.status_code == 201
+    service_id = service_response.json()["id"]
 
-    assert created.status_code == 201
-    assert response.status_code == 200
-    assert len(response.json()) == 1
-    assert response.json()[0]["metadata_json"] == {"pipeline": "deploy-123"}
+    source_response = client.post(
+        f"/api/v1/services/{service_id}/evidence-sources",
+        json={
+            "type": "metrics",
+            "provider": "prometheus",
+            "name": "production-prometheus",
+            "config": {
+                "base_url": "http://prometheus:9090",
+                "query_template": 'rate(http_requests_total{service="$service"}[5m])',
+            },
+            "enabled": True,
+        },
+    )
+    assert source_response.status_code == 201
+
+    detail = client.get(f"/api/v1/services/{service_id}")
+    assert detail.status_code == 200
+    assert detail.json()["name"] == "checkout-service"
+    assert detail.json()["evidence_sources"][0]["provider"] == "prometheus"
+
+    source_id = source_response.json()["id"]
+    disabled = client.patch(f"/api/v1/evidence-sources/{source_id}", json={"enabled": False})
+    assert disabled.status_code == 200
+    assert disabled.json()["enabled"] is False
+
+
+def test_rejects_duplicate_service_registration(client: TestClient) -> None:
+    payload = {
+        "name": "payment-service",
+        "environment": "prod",
+        "owner_team": "payments",
+        "tier": 1,
+    }
+    assert client.post("/api/v1/services", json=payload).status_code == 201
+    assert client.post("/api/v1/services", json=payload).status_code == 409

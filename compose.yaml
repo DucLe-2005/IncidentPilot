@@ -27,9 +27,9 @@ services:
       timeout: 3s
       retries: 10
 
-  migrate:
+  init-db:
     build: .
-    command: ["alembic", "upgrade", "head"]
+    command: ["python", "-m", "app.db.init"]
     env_file:
       - path: .env
         required: false
@@ -42,7 +42,7 @@ services:
 
   backend:
     build: .
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     env_file:
       - path: .env
         required: false
@@ -51,10 +51,8 @@ services:
       REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"
-    volumes:
-      - ./app:/app/app
     depends_on:
-      migrate:
+      init-db:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
@@ -68,10 +66,8 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://incidentpilot:incidentpilot@db:5432/incidentpilot
       REDIS_URL: redis://redis:6379/0
-    volumes:
-      - ./app:/app/app
     depends_on:
-      migrate:
+      init-db:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
@@ -79,4 +75,3 @@ services:
 volumes:
   postgres_data:
   redis_data:
-

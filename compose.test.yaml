@@ -1,0 +1,12 @@
+services:
+  test:
+    build:
+      context: .
+      target: test
+    command: ["pytest", "-p", "no:cacheprovider", "/tests"]
+    environment:
+      DATABASE_URL: "sqlite+pysqlite:///:memory:"
+      CELERY_TASK_ALWAYS_EAGER: "false"
+    volumes:
+      - ./app:/app/app:ro
+      - ./tests:/tests:ro
