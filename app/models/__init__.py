@@ -1,19 +1,21 @@
 from app.models.entities import (
     Alert,
     Analysis,
-    Deployment,
     Evidence,
+    EvidenceSource,
     Incident,
     Notification,
     Postmortem,
+    Service,
 )
 
 __all__ = [
     "Alert",
     "Analysis",
-    "Deployment",
     "Evidence",
+    "EvidenceSource",
     "Incident",
     "Notification",
     "Postmortem",
+    "Service",
 ]

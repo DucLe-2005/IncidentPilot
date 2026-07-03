@@ -2,7 +2,19 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, String, Text, func
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -14,6 +26,45 @@ class TimestampMixin:
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class Service(TimestampMixin, Base):
+    __tablename__ = "services"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(255), index=True)
+    environment: Mapped[str] = mapped_column(String(100), index=True)
+    owner_team: Mapped[str] = mapped_column(String(255))
+    slack_channel: Mapped[str | None] = mapped_column(String(255))
+    repo_url: Mapped[str | None] = mapped_column(String(2048))
+    runbook_url: Mapped[str | None] = mapped_column(String(2048))
+    tier: Mapped[int] = mapped_column(Integer)
+
+    evidence_sources: Mapped[list["EvidenceSource"]] = relationship(
+        back_populates="service", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (UniqueConstraint("name", "environment", name="uq_services_name_environment"),)
+
+
+class EvidenceSource(TimestampMixin, Base):
+    __tablename__ = "evidence_sources"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    service_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("services.id", ondelete="CASCADE"), index=True
+    )
+    type: Mapped[str] = mapped_column(String(50), index=True)
+    provider: Mapped[str] = mapped_column(String(100), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    config_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+    service: Mapped[Service] = relationship(back_populates="evidence_sources")
+
+    __table_args__ = (
+        UniqueConstraint("service_id", "name", name="uq_evidence_sources_service_name"),
     )
 
 
@@ -135,20 +186,6 @@ class Notification(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     incident: Mapped[Incident] = relationship(back_populates="notifications")
-
-
-class Deployment(Base):
-    __tablename__ = "deployments"
-
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    service_name: Mapped[str] = mapped_column(String(255), index=True)
-    environment: Mapped[str] = mapped_column(String(100), index=True)
-    version: Mapped[str] = mapped_column(String(255))
-    commit_sha: Mapped[str] = mapped_column(String(64), index=True)
-    deployed_by: Mapped[str] = mapped_column(String(255))
-    deployed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Postmortem(TimestampMixin, Base):

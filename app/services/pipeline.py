@@ -8,7 +8,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models import Analysis, Evidence, Incident, Notification, Postmortem
+from app.models import (
+    Analysis,
+    Evidence,
+    EvidenceSource,
+    Incident,
+    Notification,
+    Postmortem,
+    Service,
+)
+from app.services import service_registry
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +42,12 @@ class AnalysisResult:
 
 class EvidenceCollector(Protocol):
     def collect(
-        self, incident: Incident, window_start: datetime, window_end: datetime
+        self,
+        incident: Incident,
+        service: Service,
+        source: EvidenceSource,
+        window_start: datetime,
+        window_end: datetime,
     ) -> list[EvidenceResult]: ...
 
 
@@ -61,11 +75,11 @@ class AnalysisPipeline:
     def __init__(
         self,
         db: Session,
-        collectors: list[EvidenceCollector] | None = None,
+        collectors: dict[tuple[str, str], EvidenceCollector] | None = None,
         analyzer: IncidentAnalyzer | None = None,
     ) -> None:
         self.db = db
-        self.collectors = collectors or []
+        self.collectors = collectors or {}
         self.analyzer = analyzer or PlaceholderAnalyzer()
 
     def run(self, incident_id: uuid.UUID) -> Analysis:
@@ -101,8 +115,32 @@ class AnalysisPipeline:
         window_end = incident.last_seen_at
         window_start = window_end - timedelta(minutes=settings.evidence_window_minutes)
         records: list[Evidence] = []
-        for collector in self.collectors:
-            for result in collector.collect(incident, window_start, window_end):
+
+        service = service_registry.find_service(
+            self.db, incident.service_name, incident.environment
+        )
+        if service is None:
+            logger.warning(
+                "service_not_registered incident_id=%s service=%s environment=%s",
+                incident.id,
+                incident.service_name,
+                incident.environment,
+            )
+            return records
+
+        sources = service_registry.list_enabled_evidence_sources(self.db, service.id)
+        for source in sources:
+            collector = self.collectors.get((source.type, source.provider))
+            if collector is None:
+                logger.warning(
+                    "collector_not_registered incident_id=%s source_id=%s type=%s provider=%s",
+                    incident.id,
+                    source.id,
+                    source.type,
+                    source.provider,
+                )
+                continue
+            for result in collector.collect(incident, service, source, window_start, window_end):
                 record = Evidence(
                     incident_id=incident.id,
                     type=result.type,
